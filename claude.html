@@ -1,0 +1,483 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Gửi em ♥</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@300;400;500&family=Dancing+Script:wght@500;700&display=swap" rel="stylesheet">
+<style>
+  :root { --pink:#ff4d8d; --pink-soft:#ff9ec4; }
+  * { box-sizing: border-box; }
+  html, body {
+    margin:0; height:100%; background:#000; overflow:hidden;
+    font-family:'Be Vietnam Pro', system-ui, sans-serif; color:#fff;
+    -webkit-tap-highlight-color: transparent;
+  }
+  /* nền đen + ánh hồng rất nhẹ ở đáy */
+  #bg {
+    position:fixed; inset:0; z-index:0;
+    background: radial-gradient(ellipse at 50% 115%, rgba(255,77,141,.16), transparent 60%), #000;
+  }
+  #fx { position:fixed; inset:0; z-index:2; }
+
+  #loadtext {
+    position:fixed; left:50%; transform:translateX(-50%); z-index:3;
+    color:var(--pink-soft); font-size:14px; letter-spacing:.35em;
+    text-shadow:0 0 10px rgba(255,45,120,.8);
+    transition:opacity .8s ease;
+  }
+
+  /* ===== THIỆP ===== */
+  #card {
+    position:fixed; left:50%; top:50%; z-index:6;
+    width:min(88vw, 460px);
+    transform:translate(-50%,-50%) scale(.85);
+    opacity:0; pointer-events:none;
+    transition:opacity 1.4s ease, transform 1.4s cubic-bezier(.2,.8,.2,1), filter 1.8s ease;
+  }
+  #card.show { opacity:1; transform:translate(-50%,-50%) scale(1); }
+  #card.hide { opacity:0; transform:translate(-50%,-64%) scale(1.05); filter:blur(8px); }
+  .card-inner {
+    position:relative; padding:36px 28px 32px; text-align:center;
+    background:linear-gradient(160deg,#fff9fb,#ffe2ec);
+    color:#7a1f45; border-radius:18px; border:2px solid #ffb3cf;
+    box-shadow:0 0 70px rgba(255,77,141,.55), 0 24px 50px rgba(0,0,0,.6);
+  }
+  .card-inner::before {
+    content:""; position:absolute; inset:8px; border:1px dashed #f3a6c3; border-radius:12px; pointer-events:none;
+  }
+  .card-heart { font-size:26px; color:var(--pink); margin-bottom:6px; }
+  .card-title { font-family:'Dancing Script',cursive; font-size:clamp(1.7rem,7vw,2.3rem); line-height:1.25; margin:0 0 14px; font-weight:700; }
+  .card-body p {
+    margin:0 0 8px; font-size:clamp(.95rem,3.8vw,1.05rem); line-height:1.75; font-weight:400;
+    opacity:0; transform:translateY(8px); transition:opacity 1s ease, transform 1s ease;
+  }
+  .card-body p.in { opacity:1; transform:none; }
+  .card-sign { margin-top:14px; font-family:'Dancing Script',cursive; font-size:1.5rem; color:#c2185b; }
+
+  /* ===== ẢNH + CHỮ BAY ===== */
+  .fl { position:fixed; left:0; top:0; z-index:4; pointer-events:none; will-change:transform,opacity; }
+  .photo {
+    background:#fff; padding:6px 6px 20px; border-radius:4px;
+    box-shadow:0 0 26px rgba(255,77,141,.55), 0 6px 18px rgba(0,0,0,.5);
+  }
+  .photo img { display:block; width:100%; height:auto; border-radius:2px; }
+  .txt {
+    font-family:'Dancing Script',cursive; font-weight:700; white-space:nowrap; color:#ff7fae;
+    text-shadow:0 0 8px #ff2d78, 0 0 22px #ff2d78, 0 0 40px rgba(255,45,120,.6);
+  }
+  .mini-heart { color:#ff4d8d; text-shadow:0 0 12px #ff2d78; line-height:1; }
+
+  /* ===== NÚT NHẠC ===== */
+  #music {
+    position:fixed; right:14px; bottom:calc(14px + env(safe-area-inset-bottom)); z-index:10;
+    background:rgba(255,255,255,.08); color:var(--pink-soft);
+    border:1px solid rgba(255,158,196,.5); border-radius:999px;
+    padding:8px 14px; font:inherit; font-size:12px; cursor:pointer;
+    backdrop-filter:blur(6px); display:none;
+  }
+  #music.hint { animation:pulse 1.6s ease-in-out infinite; }
+  @keyframes pulse { 0%,100%{ box-shadow:0 0 0 0 rgba(255,77,141,.5);} 50%{ box-shadow:0 0 0 10px rgba(255,77,141,0);} }
+
+  /* iframe YouTube ẩn (nhạc nền, không hiện hình) */
+  #yt-wrap { position:fixed; left:-400px; top:0; width:200px; height:200px; opacity:0; pointer-events:none; }
+</style>
+</head>
+<body>
+
+<div id="bg"></div>
+<canvas id="fx"></canvas>
+<div id="loadtext">0%</div>
+
+<div id="card">
+  <div class="card-inner">
+    <div class="card-heart">♥</div>
+    <h1 class="card-title" id="cardTitle"></h1>
+    <div class="card-body" id="cardBody"></div>
+    <div class="card-sign" id="cardSign"></div>
+  </div>
+</div>
+
+<button id="music" type="button">♪ Chạm để bật nhạc</button>
+<div id="yt-wrap"><div id="yt"></div></div>
+
+<script>
+/* =====================================================================
+   ⚙️  CẤU HÌNH — CHỈ CẦN SỬA PHẦN NÀY
+   ===================================================================== */
+const CONFIG = {
+
+  /* 🎵 NHẠC NỀN: dán link YouTube vào giữa 2 dấu nháy (để trống = không phát nhạc) */
+  youtubeUrl: "https://www.youtube.com/watch?v=rIXhXaQ8tiM",            // ví dụ: "https://www.youtube.com/watch?v=xxxxxxxxxxx"
+  musicStartAt: 0,           // bắt đầu phát từ giây thứ mấy
+  musicVolume: 70,           // 0 - 100
+
+  /* 💌 THIỆP */
+  card: {
+    title: "Lê Thị Minh Thư",   // dòng tiêu đề trên thiệp
+    message: [                             // mỗi phần tử = 1 dòng lời chúc
+      "Iuuu e nhắmmmmmm",
+      "(Lời chúc dòng 2 — soạn sau)",
+      "(Lời chúc dòng 3 — soạn sau)"
+    ],
+    signature: "— Hoàng Hảii —"
+  },
+
+  /* 🖼️ ẢNH: dán link chia sẻ Google Drive (mỗi link 1 dòng, dấu phẩy ở cuối).
+     Nhớ đặt quyền: Chia sẻ → "Bất kỳ ai có đường liên kết" → Người xem. */
+  photos: [
+    //drive.google.com/file/d/1y8eZHLs2ay5_EqWIVCpkAFxQHzqGPuct/view?usp=drive_link
+    // "https://drive.google.com/file/d/XXXXXXXXXXXX/view?usp=sharing",
+    // "https://drive.google.com/file/d/YYYYYYYYYYYY/view?usp=sharing",
+    // "https://drive.google.com/file/d/ZZZZZZZZZZZZ/view?usp=sharing",
+  ],
+
+  /* ✨ CHỮ BAY TRÊN NỀN ĐEN (thêm/bớt tuỳ thích) */
+  floatingTexts: [
+    "Yêu em",
+    "Love you",
+    "Anh nhớ em",
+    "Mãi bên nhau",
+    "Em là tất cả",
+    "I love you ♥"
+  ],
+
+  /* ⏱️ THỜI GIAN (mili-giây) */
+  timing: {
+    drawHeart: 4600,    // trái tim vẽ dần
+    fillHeart: 900,     // tô đầy + đập nhẹ
+    splitHeart: 1500,   // tách đôi, thiệp hiện lên
+    cardStay: 9000,     // thiệp ở lại bao lâu trước khi mờ đi
+    spawnEvery: 700     // cứ bao lâu có 1 ảnh/chữ mới bay lên
+  }
+};
+/* ===================================================================== */
+
+
+/* ---------- tiện ích ---------- */
+const $ = (id) => document.getElementById(id);
+const rand = (a, b) => a + Math.random() * (b - a);
+const pick = (arr) => arr[Math.floor(Math.random() * arr.length)];
+const easeInOut = (t) => t < .5 ? 2*t*t : 1 - Math.pow(-2*t + 2, 2) / 2;
+
+/* Link Google Drive -> link ảnh hiển thị được */
+function driveToImg(url) {
+  if (!url) return "";
+  const m = url.match(/\/d\/([\w-]+)/) || url.match(/[?&]id=([\w-]+)/);
+  return m ? `https://drive.google.com/thumbnail?id=${m[1]}&sz=w1000` : url;
+}
+/* Link YouTube -> video ID */
+function ytId(url) {
+  if (!url) return "";
+  const m = url.match(/(?:youtu\.be\/|v=|embed\/|shorts\/)([\w-]{11})/);
+  return m ? m[1] : "";
+}
+
+/* =====================================================================
+   1) TRÁI TIM VẼ DẦN (canvas)
+   ===================================================================== */
+const canvas = $('fx');
+const ctx = canvas.getContext('2d');
+let W, H, DPR, cx, cy, s, pts = [];
+const N = 420;
+
+function heartFn(t) {
+  return [
+    16 * Math.pow(Math.sin(t), 3),
+    13 * Math.cos(t) - 5 * Math.cos(2*t) - 2 * Math.cos(3*t) - Math.cos(4*t)
+  ];
+}
+function layout() {
+  DPR = Math.min(window.devicePixelRatio || 1, 2);
+  W = window.innerWidth; H = window.innerHeight;
+  canvas.width = W * DPR; canvas.height = H * DPR;
+  canvas.style.width = W + 'px'; canvas.style.height = H + 'px';
+  ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+  s = Math.min(W * 0.72 / 32, H * 0.5 / 29);
+  cx = W / 2; cy = H / 2;
+  pts = [];
+  for (let i = 0; i <= N; i++) {
+    const t = Math.PI + (i / N) * Math.PI * 2;   // bắt đầu từ mũi tim
+    const [a, b] = heartFn(t);
+    pts.push([cx + s * a, cy - s * (b + 2.5)]);
+  }
+  const lt = $('loadtext');
+  lt.style.top = (cy + 15.5 * s + 22) + 'px';
+}
+window.addEventListener('resize', layout);
+layout();
+
+function pathTo(n) {
+  ctx.beginPath();
+  ctx.moveTo(pts[0][0], pts[0][1]);
+  for (let i = 1; i <= n; i++) ctx.lineTo(pts[i][0], pts[i][1]);
+}
+function heartGradient() {
+  const g = ctx.createLinearGradient(cx - 16*s, cy - 14*s, cx + 16*s, cy + 14*s);
+  g.addColorStop(0, '#ff9ec4'); g.addColorStop(.5, '#ff4d8d'); g.addColorStop(1, '#ff2d78');
+  return g;
+}
+function strokeHeart(n, width = 3) {
+  pathTo(n);
+  ctx.lineJoin = 'round'; ctx.lineCap = 'round';
+  ctx.lineWidth = width;
+  ctx.strokeStyle = heartGradient();
+  ctx.shadowColor = '#ff2d78'; ctx.shadowBlur = 22;
+  ctx.stroke();
+  ctx.shadowBlur = 0;
+}
+function fillHeart(alpha) {
+  pathTo(N); ctx.closePath();
+  const g = ctx.createRadialGradient(cx, cy - 3*s, s, cx, cy, 17*s);
+  g.addColorStop(0, `rgba(255,158,196,${alpha})`);
+  g.addColorStop(1, `rgba(255,45,120,${alpha * .85})`);
+  ctx.fillStyle = g;
+  ctx.shadowColor = '#ff2d78'; ctx.shadowBlur = 30;
+  ctx.fill();
+  ctx.shadowBlur = 0;
+}
+
+/* hạt lấp lánh theo đầu nét vẽ */
+const sparks = [];
+function addSpark(x, y) {
+  sparks.push({ x, y, vx: rand(-.6, .6), vy: rand(-.9, .2), life: 1, r: rand(1, 2.6) });
+}
+function drawSparks() {
+  for (let i = sparks.length - 1; i >= 0; i--) {
+    const p = sparks[i];
+    p.x += p.vx; p.y += p.vy; p.life -= .02;
+    if (p.life <= 0) { sparks.splice(i, 1); continue; }
+    ctx.globalAlpha = p.life;
+    ctx.fillStyle = '#ffc2da';
+    ctx.shadowColor = '#ff2d78'; ctx.shadowBlur = 10;
+    ctx.beginPath(); ctx.arc(p.x, p.y, p.r, 0, 7); ctx.fill();
+  }
+  ctx.globalAlpha = 1; ctx.shadowBlur = 0;
+}
+
+const T = CONFIG.timing;
+let startTs = null, cardShown = false, introDone = false;
+
+function frame(ts) {
+  if (startTs === null) startTs = ts;
+  const el = ts - startTs;
+  ctx.clearRect(0, 0, W, H);
+
+  if (el < T.drawHeart) {
+    /* --- giai đoạn 1: vẽ dần --- */
+    const u = easeInOut(el / T.drawHeart);
+    const n = Math.max(1, Math.floor(u * N));
+    strokeHeart(n);
+    const [hx, hy] = pts[n];
+    ctx.fillStyle = '#fff'; ctx.shadowColor = '#ff2d78'; ctx.shadowBlur = 25;
+    ctx.beginPath(); ctx.arc(hx, hy, 4, 0, 7); ctx.fill(); ctx.shadowBlur = 0;
+    addSpark(hx, hy); addSpark(hx, hy);
+    $('loadtext').textContent = Math.round(u * 100) + '%';
+
+  } else if (el < T.drawHeart + T.fillHeart) {
+    /* --- giai đoạn 2: tô đầy + đập --- */
+    const p = (el - T.drawHeart) / T.fillHeart;
+    const pulse = 1 + 0.05 * Math.sin(p * Math.PI * 3);
+    ctx.save();
+    ctx.translate(cx, cy); ctx.scale(pulse, pulse); ctx.translate(-cx, -cy);
+    fillHeart(p * .9);
+    strokeHeart(N);
+    ctx.restore();
+    $('loadtext').textContent = '100%';
+    $('loadtext').style.opacity = 1 - p;
+
+  } else if (el < T.drawHeart + T.fillHeart + T.splitHeart) {
+    /* --- giai đoạn 3: tách đôi, thiệp hiện --- */
+    if (!cardShown) { cardShown = true; showCard(); }
+    const p = (el - T.drawHeart - T.fillHeart) / T.splitHeart;
+    const e = easeInOut(p);
+    [-1, 1].forEach(side => {
+      ctx.save();
+      ctx.beginPath();
+      if (side < 0) ctx.rect(0, 0, cx, H); else ctx.rect(cx, 0, W - cx, H);
+      ctx.clip();
+      ctx.globalAlpha = 1 - e;
+      ctx.translate(side * e * W * 0.55, 0);
+      ctx.translate(cx, cy); ctx.rotate(side * e * 0.35); ctx.translate(-cx, -cy);
+      fillHeart(.9); strokeHeart(N);
+      ctx.restore();
+    });
+
+  } else {
+    ctx.clearRect(0, 0, W, H);
+    $('loadtext').style.display = 'none';
+    if (sparks.length === 0) { introDone = true; return; }
+  }
+  drawSparks();
+  requestAnimationFrame(frame);
+}
+
+/* =====================================================================
+   2) THIỆP
+   ===================================================================== */
+function buildCard() {
+  $('cardTitle').textContent = CONFIG.card.title;
+  $('cardSign').textContent = CONFIG.card.signature;
+  const body = $('cardBody');
+  CONFIG.card.message.forEach(line => {
+    const p = document.createElement('p');
+    p.textContent = line;
+    body.appendChild(p);
+  });
+}
+function showCard() {
+  const card = $('card');
+  card.classList.add('show');
+  [...$('cardBody').children].forEach((p, i) => {
+    p.style.transitionDelay = (1.1 + i * 0.7) + 's';
+    p.classList.add('in');
+  });
+  /* sau cardStay: thiệp mờ dần, nhường chỗ cho ảnh bay */
+  setTimeout(() => {
+    card.classList.remove('show');
+    card.classList.add('hide');
+    setTimeout(startStage, 1400);
+  }, T.cardStay);
+}
+
+/* =====================================================================
+   3) ẢNH + CHỮ BAY TRÊN NỀN ĐEN (lặp vô hạn)
+   ===================================================================== */
+const photoPool = [];   // { url, ratio }
+let photoIdx = 0, active = 0, stageStarted = false;
+
+function preloadPhotos() {
+  CONFIG.photos.map(driveToImg).filter(Boolean).forEach(url => {
+    const img = new Image();
+    img.onload = () => photoPool.push({ url, ratio: img.naturalHeight / img.naturalWidth });
+    img.onerror = () => console.warn('Không tải được ảnh (kiểm tra quyền chia sẻ Drive):', url);
+    img.src = url;
+  });
+}
+
+function fly(el, w, h) {
+  document.body.appendChild(el);
+  active++;
+  const x0 = rand(8, Math.max(9, W - w - 8));
+  const sway = rand(20, 60) * (Math.random() < .5 ? -1 : 1);
+  const r0 = rand(-14, 14), r1 = r0 + rand(-10, 10);
+  const dur = rand(9000, 15000);
+  const anim = el.animate([
+    { transform: `translate(${x0}px, ${H + 60}px) rotate(${r0}deg)`, opacity: 0 },
+    { transform: `translate(${x0 + sway}px, ${H * .72}px) rotate(${r0 + (r1-r0)*.25}deg)`, opacity: 1, offset: .12 },
+    { transform: `translate(${x0 - sway}px, ${H * .35}px) rotate(${r0 + (r1-r0)*.6}deg)`, opacity: 1, offset: .55 },
+    { transform: `translate(${x0 + sway * .5}px, ${-h - 80}px) rotate(${r1}deg)`, opacity: 0 }
+  ], { duration: dur, easing: 'linear' });
+  anim.onfinish = () => { el.remove(); active--; };
+}
+
+function spawnPhoto() {
+  if (!photoPool.length) return spawnText();
+  const p = photoPool[photoIdx++ % photoPool.length];
+  const w = Math.min(rand(110, 180), W * 0.42);
+  const el = document.createElement('div');
+  el.className = 'fl photo';
+  el.style.width = w + 'px';
+  const img = document.createElement('img');
+  img.src = p.url; img.alt = '';
+  el.appendChild(img);
+  fly(el, w, w * p.ratio + 26);
+}
+function spawnText() {
+  const texts = CONFIG.floatingTexts;
+  if (!texts.length) return spawnHeart();
+  const el = document.createElement('div');
+  el.className = 'fl txt';
+  const size = rand(22, 40);
+  el.style.fontSize = size + 'px';
+  el.textContent = pick(texts);
+  document.body.appendChild(el);
+  const w = el.offsetWidth;
+  document.body.removeChild(el);
+  fly(el, w, size * 1.4);
+}
+function spawnHeart() {
+  const el = document.createElement('div');
+  el.className = 'fl mini-heart';
+  const size = rand(14, 34);
+  el.style.fontSize = size + 'px';
+  el.textContent = '♥';
+  fly(el, size, size);
+}
+
+function spawnOne() {
+  if (active > 16) return;
+  const r = Math.random();
+  if (r < .4) spawnPhoto();
+  else if (r < .82) spawnText();
+  else spawnHeart();
+}
+
+function startStage() {
+  if (stageStarted) return;
+  stageStarted = true;
+  for (let i = 0; i < 4; i++) setTimeout(spawnOne, i * 350);
+  setInterval(spawnOne, T.spawnEvery);
+}
+
+/* =====================================================================
+   4) NHẠC NỀN YOUTUBE (iframe ẩn)
+   Trình duyệt chặn tự phát tiếng khi mới vào trang, nên sẽ thử phát
+   ngay; nếu bị chặn thì lần chạm đầu tiên vào màn hình sẽ bật nhạc.
+   ===================================================================== */
+let player = null, playing = false;
+const musicBtn = $('music');
+
+function setupMusic() {
+  const id = ytId(CONFIG.youtubeUrl);
+  if (!id) return;   // chưa nhập link -> bỏ qua
+  musicBtn.style.display = 'block';
+  musicBtn.classList.add('hint');
+
+  const tag = document.createElement('script');
+  tag.src = 'https://www.youtube.com/iframe_api';
+  document.head.appendChild(tag);
+
+  window.onYouTubeIframeAPIReady = () => {
+    player = new YT.Player('yt', {
+      width: 200, height: 200, videoId: id,
+      playerVars: {
+        autoplay: 1, controls: 0, loop: 1, playlist: id, playsinline: 1,
+        start: CONFIG.musicStartAt, modestbranding: 1, rel: 0
+      },
+      events: {
+        onReady: (e) => { e.target.setVolume(CONFIG.musicVolume); e.target.playVideo(); },
+        onStateChange: (e) => {
+          playing = (e.data === YT.PlayerState.PLAYING);
+          musicBtn.textContent = playing ? '♪ Tắt nhạc' : '♪ Bật nhạc';
+          if (playing) musicBtn.classList.remove('hint');
+        }
+      }
+    });
+  };
+
+  /* lần chạm đầu tiên -> bật nhạc nếu chưa phát */
+  const firstTap = () => {
+    if (player && player.playVideo && !playing) player.playVideo();
+    window.removeEventListener('pointerdown', firstTap);
+  };
+  window.addEventListener('pointerdown', firstTap);
+
+  musicBtn.addEventListener('click', (ev) => {
+    ev.stopPropagation();
+    if (!player) return;
+    playing ? player.pauseVideo() : player.playVideo();
+  });
+}
+
+/* =====================================================================
+   KHỞI CHẠY
+   ===================================================================== */
+buildCard();
+preloadPhotos();
+setupMusic();
+requestAnimationFrame(frame);
+</script>
+</body>
+</html>
